@@ -9,13 +9,11 @@ st.set_page_config(page_title="Karos Boss Timer", page_icon="⚔️", layout="wi
 # Arayüzü güzelleştirmek için özel CSS kodumuz
 st.markdown("""
     <style>
-    /* Açılır kapanır menü (expander) başlıklarının boyutunu ve rengini ayarlama */
     [data-testid="stExpander"] details summary p {
         font-size: 26px !important;
         font-weight: 800 !important;
         color: #FF4B4B !important; 
     }
-    /* Buton yazılarının daha belirgin olması için */
     div.stButton > button {
         font-weight: bold;
     }
@@ -77,7 +75,9 @@ for harita in HARITALAR.keys():
 if guncellendi_mi:
     verileri_kaydet(aktif_veriler)
 
-su_an = datetime.now()
+# ---> SAAT DÜZELTMESİ BURADA <---
+# Sunucu saati (UTC) üzerine 3 saat ekleyerek Türkiye saatini (UTC+3) buluyoruz.
+su_an = datetime.utcnow() + timedelta(hours=3)
 
 # Ekranı yenileme butonu
 col_btn, _ = st.columns([1, 5])
@@ -125,11 +125,9 @@ for harita, bekleme_suresi in HARITALAR.items():
 
                 with btn_col1:
                     if st.button(f"⚔️ Kesildi", key=f"btn_kes_{harita}_{kanal}", use_container_width=True):
-                        # Önce mevcut zamanı yedekle
                         aktif_veriler[harita][kanal]["eski_cikis_zamani"] = cikis_zamani_str
                         aktif_veriler[harita][kanal]["geri_alinabilir"] = True
 
-                        # Yeni zamanı hesapla
                         yeni_cikis = su_an + timedelta(minutes=bekleme_suresi)
                         aktif_veriler[harita][kanal]["cikis_zamani"] = yeni_cikis.strftime("%Y-%m-%d %H:%M:%S")
                         verileri_kaydet(aktif_veriler)
@@ -138,7 +136,6 @@ for harita, bekleme_suresi in HARITALAR.items():
                 with btn_col2:
                     if st.button(f"↩️ Geri Al", key=f"btn_geri_{harita}_{kanal}", disabled=not geri_alinabilir,
                                  use_container_width=True):
-                        # Şimdiki zamanı eski zamana geri döndür
                         aktif_veriler[harita][kanal]["cikis_zamani"] = eski_cikis_str
                         aktif_veriler[harita][kanal]["geri_alinabilir"] = False
                         verileri_kaydet(aktif_veriler)
@@ -146,23 +143,18 @@ for harita, bekleme_suresi in HARITALAR.items():
 
                 # Manuel Saat Girişi Bölümü
                 with st.expander("⚙️ Manuel Saat Gir"):
-                    # Varsayılan olarak şu anki saati göstersin
                     manuel_saat = st.time_input("Kesilme saati:", value=su_an.time(), key=f"saat_{harita}_{kanal}")
 
                     if st.button("Kaydet", key=f"btn_manuel_{harita}_{kanal}", use_container_width=True):
-                        # Geri alma işlemini manuel giriş için de aktif et
                         aktif_veriler[harita][kanal]["eski_cikis_zamani"] = cikis_zamani_str
                         aktif_veriler[harita][kanal]["geri_alinabilir"] = True
 
-                        # Kullanıcının girdiği saati bugünün tarihiyle birleştir
                         kesilme_zamani = su_an.replace(hour=manuel_saat.hour, minute=manuel_saat.minute, second=0,
                                                        microsecond=0)
 
-                        # Eğer girilen saat şu andan ilerideyse (gece oyundayken 23:30 girilmesi gibi) bu işlem dün yapılmıştır.
                         if kesilme_zamani > su_an:
                             kesilme_zamani -= timedelta(days=1)
 
-                        # Boss'un yeni çıkış zamanını manuel saate göre hesapla
                         yeni_cikis = kesilme_zamani + timedelta(minutes=bekleme_suresi)
                         aktif_veriler[harita][kanal]["cikis_zamani"] = yeni_cikis.strftime("%Y-%m-%d %H:%M:%S")
 
