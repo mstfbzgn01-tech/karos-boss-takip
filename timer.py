@@ -2,9 +2,13 @@ import streamlit as st
 import json
 import os
 from datetime import datetime, timedelta
+from streamlit_autorefresh import st_autorefresh
 
 # Sayfa ayarları
 st.set_page_config(page_title="Karos Boss Timer", page_icon="⚔️", layout="wide")
+
+# Sayfayı her 1 saniyede (1000 milisaniye) bir otomatik yeniler. (Canlı geri sayım için)
+st_autorefresh(interval=1000, limit=None, key="canli_sayac")
 
 # Arayüzü güzelleştirmek için özel CSS kodumuz
 st.markdown("""
@@ -65,25 +69,19 @@ for harita in HARITALAR.keys():
             aktif_veriler[harita][kanal] = {
                 "cikis_zamani": None,
                 "eski_cikis_zamani": None,
-                "geri_alinabilir": False
+                "geri_alinabilir": False,
+                "durum": "Emin"  # Yeni Özellik: "Emin" veya "Tahmini"
             }
             guncellendi_mi = True
-        elif "geri_alinabilir" not in aktif_veriler[harita][kanal]:
-            aktif_veriler[harita][kanal]["geri_alinabilir"] = False
+        elif "durum" not in aktif_veriler[harita][kanal]:
+            aktif_veriler[harita][kanal]["durum"] = "Emin"
             guncellendi_mi = True
 
 if guncellendi_mi:
     verileri_kaydet(aktif_veriler)
 
-# ---> SAAT DÜZELTMESİ BURADA <---
 # Sunucu saati (UTC) üzerine 3 saat ekleyerek Türkiye saatini (UTC+3) buluyoruz.
 su_an = datetime.utcnow() + timedelta(hours=3)
-
-# Ekranı yenileme butonu
-col_btn, _ = st.columns([1, 5])
-with col_btn:
-    if st.button("🔄 Ekranı Yenile / Senkronize Et", use_container_width=True):
-        st.rerun()
 
 st.markdown("---")
 
@@ -102,23 +100,41 @@ for harita, bekleme_suresi in HARITALAR.items():
                 cikis_zamani_str = detaylar.get("cikis_zamani")
                 eski_cikis_str = detaylar.get("eski_cikis_zamani")
                 geri_alinabilir = detaylar.get("geri_alinabilir", False)
+                durum = detaylar.get("durum", "Emin")
 
-                # Süre hesaplama ve gösterme
+                # Süre hesaplama ve OTOMATİK DÖNGÜ mantığı
                 if cikis_zamani_str:
                     cikis_zamani = datetime.strptime(cikis_zamani_str, "%Y-%m-%d %H:%M:%S")
-                    if su_an < cikis_zamani:
-                        kalan_sure = cikis_zamani - su_an
 
-                        kalan_saat = int(kalan_sure.total_seconds() // 3600)
-                        kalan_dakika = int((kalan_sure.total_seconds() % 3600) // 60)
-                        kalan_saniye = int(kalan_sure.total_seconds() % 60)
+                    # Eğer süre dolduysa ve kimse butona basmadıysa (Boss kaçırıldıysa)
+                    if su_an >= cikis_zamani:
+                        # Şu anki zamana ulaşana kadar üstüne boss süresini ekle (Döngüye sok)
+                        while cikis_zamani <= su_an:
+                            cikis_zamani += timedelta(minutes=bekleme_suresi)
 
-                        st.warning(f"⏳ Kalan Süre: **{kalan_saat} sa {kalan_dakika} dk {kalan_saniye} sn**")
+                        # Veriyi güncelle ve durumu TAHMİNİ yap
+                        aktif_veriler[harita][kanal]["cikis_zamani"] = cikis_zamani.strftime("%Y-%m-%d %H:%M:%S")
+                        aktif_veriler[harita][kanal]["durum"] = "Tahmini"
+                        aktif_veriler[harita][kanal][
+                            "geri_alinabilir"] = False  # Döngüye girdiği için geri almayı kapat
+                        verileri_kaydet(aktif_veriler)
+                        st.rerun()  # Sayfayı anında yenile
+
+                    kalan_sure = cikis_zamani - su_an
+                    kalan_saat = int(kalan_sure.total_seconds() // 3600)
+                    kalan_dakika = int((kalan_sure.total_seconds() % 3600) // 60)
+                    kalan_saniye = int(kalan_sure.total_seconds() % 60)
+
+                    # DURUMA GÖRE GÖRSEL AYIRIM
+                    if durum == "Emin":
+                        st.success(
+                            f"✅ **KESİN BİLGİ** | Kalan: **{kalan_saat} sa {kalan_dakika} dk {kalan_saniye} sn**")
                         st.info(f"🕒 Çıkış Saati: **{cikis_zamani.strftime('%H:%M:%S')}**")
                     else:
-                        st.success("🟢 BOSS ÇIKTI (Veya Çıkmak Üzere)")
+                        st.warning(f"⚠️ **TAHMİNİ** | Kalan: **{kalan_saat} sa {kalan_dakika} dk {kalan_saniye} sn**")
+                        st.error(f"🕒 Tahmini Çıkış: **{cikis_zamani.strftime('%H:%M:%S')}** (Kaçırıldı)")
                 else:
-                    st.success("🟢 BOSS ÇIKTI (Veya Çıkmak Üzere)")
+                    st.info("Boss bekleniyor. İlk kesimi işaretleyin.")
 
                 # Hızlı İşlem Butonları
                 btn_col1, btn_col2 = st.columns(2)
@@ -127,6 +143,7 @@ for harita, bekleme_suresi in HARITALAR.items():
                     if st.button(f"⚔️ Kesildi", key=f"btn_kes_{harita}_{kanal}", use_container_width=True):
                         aktif_veriler[harita][kanal]["eski_cikis_zamani"] = cikis_zamani_str
                         aktif_veriler[harita][kanal]["geri_alinabilir"] = True
+                        aktif_veriler[harita][kanal]["durum"] = "Emin"  # Biz bastığımız için kesin bilgi!
 
                         yeni_cikis = su_an + timedelta(minutes=bekleme_suresi)
                         aktif_veriler[harita][kanal]["cikis_zamani"] = yeni_cikis.strftime("%Y-%m-%d %H:%M:%S")
@@ -138,6 +155,7 @@ for harita, bekleme_suresi in HARITALAR.items():
                                  use_container_width=True):
                         aktif_veriler[harita][kanal]["cikis_zamani"] = eski_cikis_str
                         aktif_veriler[harita][kanal]["geri_alinabilir"] = False
+                        aktif_veriler[harita][kanal]["durum"] = "Emin"
                         verileri_kaydet(aktif_veriler)
                         st.rerun()
 
@@ -148,6 +166,7 @@ for harita, bekleme_suresi in HARITALAR.items():
                     if st.button("Kaydet", key=f"btn_manuel_{harita}_{kanal}", use_container_width=True):
                         aktif_veriler[harita][kanal]["eski_cikis_zamani"] = cikis_zamani_str
                         aktif_veriler[harita][kanal]["geri_alinabilir"] = True
+                        aktif_veriler[harita][kanal]["durum"] = "Emin"  # Biz girdiğimiz için kesin bilgi!
 
                         kesilme_zamani = su_an.replace(hour=manuel_saat.hour, minute=manuel_saat.minute, second=0,
                                                        microsecond=0)
