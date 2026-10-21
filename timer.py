@@ -33,9 +33,9 @@ DOSYA_ADI = "karos_boss_sureleri.json"
 HARITALAR = {
     "Lüpinel": 180,  # 3 saat
     "Tempreon": 180,  # 3 saat
-    "Petrok": 300,  # 5 saat
-    "Bahalasong": 360,  # 6 saat
-    "Seron Adası": 540  # 9 saat
+    "Petrok": 240,  # 4 saat
+    "Bahalasong": 420,  # 7 saat
+    "Seron Adası": 420  # 7 saat
 }
 
 KANALLAR = ["Kanal 1", "Kanal 2", "Kanal 3"]
